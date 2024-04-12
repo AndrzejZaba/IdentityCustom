@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using IdentityCustom.Areas.Identity.Data;
+using AdService.UI.Middlewares;
+using Microsoft.Extensions.Logging;
+using NLog.Web;
+
 namespace IdentityCustom
 {
     public class Program
@@ -9,6 +13,11 @@ namespace IdentityCustom
         {
             var builder = WebApplication.CreateBuilder(args);
                         var connectionString = builder.Configuration.GetConnectionString("ApplicationDbContextConnection") ?? throw new InvalidOperationException("Connection string 'ApplicationDbContextConnection' not found.");
+
+            //logger
+            builder.Logging.ClearProviders();
+            builder.Logging.SetMinimumLevel(LogLevel.Information);
+            builder.Logging.AddNLogWeb();
 
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(connectionString));
@@ -34,6 +43,16 @@ namespace IdentityCustom
             .AddDefaultUI()
             .AddDefaultTokenProviders();
 
+            builder.Services.Configure<PasswordHasherOptions>(opt => opt.IterationCount = 600_000);
+
+            builder.Services.AddSession(options =>
+            {
+                // Ustawienia zabezpieczeñ sesji
+                options.Cookie.HttpOnly = true; // Zapobiega dostêpowi do ciasteczka z poziomu JavaScript
+                options.Cookie.IsEssential = true; // Oznacza ciasteczko jako niezbêdne, nawet jeœli sesja nie jest aktywna
+                options.IdleTimeout = TimeSpan.FromMinutes(30); // Czas wygaœniêcia sesji
+                options.Cookie.SameSite = SameSiteMode.Strict; // Zapobiega atakom CSRF
+            });
 
             // Add services to the container.
             builder.Services.AddControllersWithViews();
@@ -48,13 +67,19 @@ namespace IdentityCustom
                 app.UseHsts();
             }
 
+            app.UseMiddleware<ExceptionHandlerMiddleware>();
+
+
             app.UseHttpsRedirection();
             app.UseStaticFiles();
 
             app.UseRouting();
-                        app.UseAuthentication();;
-
+            
+            app.UseAuthentication();;
             app.UseAuthorization();
+
+            // Dodanie obs³ugi sesji do potoku middleware'ów
+            app.UseSession();
 
             app.MapControllerRoute(
                 name: "default",
